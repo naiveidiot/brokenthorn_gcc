@@ -1,1 +1,1 @@
-OBJS:= $(OBJS) Kernel/DebugDisplay.o Kernel/entry.o Kernel/main.o
+OBJS:= $(OBJS) Kernel/DebugDisplay.o  Kernel/main.o Kernel/boot.o

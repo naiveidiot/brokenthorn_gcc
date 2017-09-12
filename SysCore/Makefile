@@ -11,7 +11,7 @@ FLAG :=$(FLAG) -D__$(ARCH)__
 all: $(KERNEL)
 
 $(KERNEL): $(OBJS)
-	$(LD) $(LDFLAG) -o $@ $^
+	$(LD) $(LDFLAGS) -o $@ $^
 	#cp $(KERNEL) $(SDKDIR)/bootdisk/
 
 help:
@@ -20,7 +20,7 @@ help:
 	@echo "Output should be: "$(KERNEL)
 	@echo "Usage: make [ all | clean] "
 
-%.o: %.cc
+%.o: %.cpp
 	$(SC) $(FLAG) -c $< -o  $@
 
 %.o: %.S
@@ -28,6 +28,9 @@ help:
 
 %.o: %.asm
 	$(ASM) $(ASMFLAG)  -c $< -o  $@
+
+Kernel/boot.o:Kernel/boot.s
+	nasm -felf -o Kernel/boot.o Kernel/boot.s
 
 
 clean:

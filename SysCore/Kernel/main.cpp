@@ -7,7 +7,7 @@
 
 #include "DebugDisplay.h"
 
-extern void kmain () {
+int main(struct multiboot *mboot_ptr){
 
 	int i=0x12;
 
@@ -32,5 +32,7 @@ extern void kmain () {
 	DebugGotoXY (4,16);
 	DebugSetColor (0x1F);
 	DebugPrintf ("\n\nI am preparing to load... Hold on, please... :)");
+
+	return 0;
 
 }
