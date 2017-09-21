@@ -41,17 +41,17 @@ bsFileSystem: 	        DB "FAT12   "
 
 ;************************************************;
 ;	Prints a string
-;	DS=>SI: 0 terminated string
+;	DS:SI => 0 terminated string
 ;************************************************;
 Print:
-	lodsb						; load next byte from string from SI to AL
-	or	al, al					; Does AL=0?
-	jz	PrintDone				; Yep, null terminator found-bail out
-	mov	ah, 0eh					; Nope-Print the character
-	int	10h
-	jmp	Print					; Repeat until null terminator found
-PrintDone:
-	ret						; we are done, so return
+			lodsb				; load next byte from string from SI to AL
+			or	al, al			; Does AL=0?
+			jz	PrintDone		; Yep, null terminator found-bail out
+			mov	ah, 0eh			; Nope-Print the character
+			int	10h
+			jmp	Print			; Repeat until null terminator found
+	PrintDone:
+			ret				; we are done, so return
 
 
 absoluteSector db 0x00
@@ -59,8 +59,8 @@ absoluteHead   db 0x00
 absoluteTrack  db 0x00
 
 ;************************************************;
-; Convert CHS to LBA
-; LBA = (cluster - 2) * sectors per cluster
+; Convert Cluster Number to LBA
+; LBA = (cluster no - 2) * sectors per cluster + first data sector
 ;************************************************;
 
 ClusterLBA:
@@ -74,20 +74,28 @@ ClusterLBA:
 ;************************************************;
 ; Convert LBA to CHS
 ; AX=>LBA Address to convert
-;
-; absolute sector = (logical sector / sectors per track) + 1
-; absolute head   = (logical sector / sectors per track) MOD number of heads
-; absolute track  = logical sector / (sectors per track * number of heads)
-;
+; Note: The formulas in the comments of brokenthorn's original source code are
+; 			incorrect and not in accordance with actual assembly code written.
+; Corrected formulas are as follow:
+; LBA to CHS coonversion formula
+;        Sector = (LBA % SectorsPerTrack) + 1
+;        Head = (LBA / SectorsPerTrack) % NumberOfHeads
+;	       Cylinder = (LBA /SectorsPerTrack) / NumberOfHeads
+; Source:http://www.osdever.net/tutorials/view/lba-to-chs
 ;************************************************;
 
 LBACHS:
-          xor     dx, dx                              ; prepare dx:ax for operation
-          div     WORD [bpbSectorsPerTrack]           ; calculate
+          xor     dx, dx
+          div     WORD [bpbSectorsPerTrack]
+					;	al contains the quotient, dl contains the remainder
+					; i.e al = LBA / SectorsPerTrack
+					;			dl = LBA % SectorsPerTrack
           inc     dl                                  ; adjust for sector 0
           mov     BYTE [absoluteSector], dl
-          xor     dx, dx                              ; prepare dx:ax for operation
-          div     WORD [bpbHeadsPerCylinder]          ; calculate
+          xor     dx, dx
+          div     WORD [bpbHeadsPerCylinder]
+					; Now, al = (LBA / SectorsPerTrack) / NumberOfHeads = Cylinder
+					;			 dl = (LBA / SectorsPerTrack) % NumberOfHeads = Head
           mov     BYTE [absoluteHead], dl
           mov     BYTE [absoluteTrack], al
           ret
@@ -97,7 +105,8 @@ LBACHS:
 ; Reads a series of sectors
 ; CX=>Number of sectors to read
 ; AX=>Starting sector
-; ES:BX=>Buffer to read to
+; ES:BX=>Buffer to read to (the way int 13h does it)
+; Note: to be used to read a series of sectors in a cluster to the buffer
 ;************************************************;
 
 ReadSectors:
@@ -108,7 +117,7 @@ ReadSectors:
           push    bx
           push    cx
           call    LBACHS                              ; convert starting sector to CHS
-          mov     ah, 0x02                            ; BIOS read sector
+          mov     ah, 0x02                            ; read sector function
           mov     al, 0x01                            ; read one sector
           mov     ch, BYTE [absoluteTrack]            ; track
           mov     cl, BYTE [absoluteSector]           ; sector
@@ -116,13 +125,15 @@ ReadSectors:
           mov     dl, BYTE [bsDriveNumber]            ; drive
           int     0x13                                ; invoke BIOS
           jnc     .SUCCESS                            ; test for read error
+					;We are here because reading the sector was failed. So, retry.
           xor     ax, ax                              ; BIOS reset disk
           int     0x13                                ; invoke BIOS
           dec     di                                  ; decrement error counter
           pop     cx
           pop     bx
           pop     ax
-          jnz     .SECTORLOOP                         ; attempt to read again
+          jnz     .SECTORLOOP                         ; attempt to read the same
+																											; seector again
           int     0x18
      .SUCCESS
           mov     si, msgProgress
@@ -145,7 +156,7 @@ main:
      ;----------------------------------------------------
      ; code located at 0000:7C00, adjust segment registers
      ;----------------------------------------------------
-     
+
           cli						; disable interrupts
           mov     ax, 0x07C0				; setup registers to point to our segment
           mov     ds, ax
@@ -156,45 +167,69 @@ main:
      ;----------------------------------------------------
      ; create stack
      ;----------------------------------------------------
-     
+
           mov     ax, 0x0000				; set the stack
           mov     ss, ax
           mov     sp, 0xFFFF
           sti						; restore interrupts
 
-          mov  [bootdevice], dl
+     ;----------------------------------------------------
+     ; Display loading message
+     ;----------------------------------------------------
+
+          mov     si, msgLoading
+          call    Print
 
      ;----------------------------------------------------
      ; Load root directory table
+		 ; Note: Sectors before FAT1 are taken as reserved sectors. We only have one,
+		 ; 			 which is the boot sector. That's why "bpbReservedSectors: 	DW 1"
+		 ; ||Boot Sector...|FAT1...|FAT2...|Root Dir...|Data Region... ...
      ;----------------------------------------------------
 
      LOAD_ROOT:
-     
+
      ; compute size of root directory and store in "cx"
-     
+
           xor     cx, cx
           xor     dx, dx
           mov     ax, 0x0020                           ; 32 byte directory entry
           mul     WORD [bpbRootEntries]                ; total size of directory
           div     WORD [bpbBytesPerSector]             ; sectors used by directory
           xchg    ax, cx
-          
+
      ; compute location of root directory and store in "ax"
-     
+
           mov     al, BYTE [bpbNumberOfFATs]            ; number of FATs
           mul     WORD [bpbSectorsPerFAT]               ; sectors used by FATs
           add     ax, WORD [bpbReservedSectors]         ; adjust for bootsector
           mov     WORD [datasector], ax                 ; base of root directory
-          add     WORD [datasector], cx
-          
-     ; read root directory into memory (7C00:0200)
-     
+          add     WORD [datasector], cx									; beginning sector of data region
+
+		 ; Now that CX => Size of root dir (in sectors), AX => Starting sector of root dir
+		 ; we can read root directory into memory (0x7C00:0x0200 = 0x7e00)
           mov     bx, 0x0200                            ; copy root dir above bootcode
           call    ReadSectors
 
      ;----------------------------------------------------
      ; Find stage 2
      ;----------------------------------------------------
+
+		 ; CMPSB: Both source operands are located in memory. The address of the first
+		 ; source operand is read from DS:SI, DS:ESI or RSI (depending on the address
+		 ; -size attribute of the instruction is 16, 32, or 64, respectively). The address
+		 ; of the second source operand is read from ES:DI, ES:EDI or RDI (again depending
+		 ; on the address-size attribute of the instruction)
+		 ; After the comparison, the (E/R)SI and (E/R)DI registers increment or decrement
+		 ; automatically according to the setting of the DF flag in the EFLAGS register.
+		 ; Logic:   CMP (DS:SI), (ES:DI)           ; Sets flags only
+     ;             if DF = 0
+     ;                 SI    SI + 1
+     ;                 DI    DI + 1
+     ;             else
+     ;                 SI    SI - 1
+     ;                 DI    DI - 1
+
 
      ; browse root directory for binary image
           mov     cx, WORD [bpbRootEntries]             ; load loop counter
@@ -205,7 +240,7 @@ main:
           mov     si, ImageName                         ; image name to find
           push    di
      rep  cmpsb                                         ; test for entry match
-          pop     di
+          pop     di																		; start address of entry
           je      LOAD_FAT
           pop     cx
           add     di, 0x0020                            ; queue next directory entry
@@ -217,14 +252,15 @@ main:
      ;----------------------------------------------------
 
      LOAD_FAT:
-     
+
      ; save starting cluster of boot image
-     
+		 			; di = start address of entry, byte number 26 and 27 store the first
+					; cluster of the file
           mov     dx, WORD [di + 0x001A]
           mov     WORD [cluster], dx                  ; file's first cluster
-          
+
      ; compute size of FAT and store in "cx"
-     
+
           xor     ax, ax
           mov     al, BYTE [bpbNumberOfFATs]          ; number of FATs
           mul     WORD [bpbSectorsPerFAT]             ; sectors used by FATs
@@ -233,72 +269,80 @@ main:
      ; compute location of FAT and store in "ax"
 
           mov     ax, WORD [bpbReservedSectors]       ; adjust for bootsector
-          
+
      ; read FAT into memory (7C00:0200)
 
           mov     bx, 0x0200                          ; copy FAT above bootcode
           call    ReadSectors
 
-     ; read image file into memory (0050:0000)
-     
+     ;----------------------------------------------------
+     ; Load Stage 2
+     ;----------------------------------------------------
+
+		 ; read image file into memory (0050:0000)
+
           mov     ax, 0x0050
           mov     es, ax                              ; destination for image
           mov     bx, 0x0000                          ; destination for image
           push    bx
 
-     ;----------------------------------------------------
-     ; Load Stage 2
-     ;----------------------------------------------------
-
      LOAD_IMAGE:
-     
+
           mov     ax, WORD [cluster]                  ; cluster to read
           pop     bx                                  ; buffer to read into
           call    ClusterLBA                          ; convert cluster to LBA
           xor     cx, cx
-          mov     cl, BYTE [bpbSectorsPerCluster]     ; sectors to read
+          mov     cl, BYTE [bpbSectorsPerCluster]     ; no of sectors to read
           call    ReadSectors
           push    bx
-          
+
      ; compute next cluster
-     
+
+		 ; Note: Cluster index number and starting address relationship is as follows:
+		 ; FAT entry size is 12 bits (one and a half bytes)
+		 ; byte add: 0   1   3   4   6   7   9   10  12  13  15 ...
+		 ; cluster : 0   1   2   3   4   5   6   7   8   9   10 ...
+		 ; So, we can see that
+		 ;			byteAddress = clusterIndex + clusterIndex / 2
+
+
           mov     ax, WORD [cluster]                  ; identify current cluster
           mov     cx, ax                              ; copy current cluster
           mov     dx, ax                              ; copy current cluster
           shr     dx, 0x0001                          ; divide by two
-          add     cx, dx                              ; sum for (3/2)
+          add     cx, dx
+					; cx = byte address of cluster
           mov     bx, 0x0200                          ; location of FAT in memory
           add     bx, cx                              ; index into FAT
           mov     dx, WORD [bx]                       ; read two bytes from FAT
           test    ax, 0x0001
           jnz     .ODD_CLUSTER
-          
+
      .EVEN_CLUSTER:
-     
-          and     dx, 0000111111111111b               ; take low twelve bits
-         jmp     .DONE
-         
+
+         and      dx, 0000111111111111b               ; take low twelve bits
+         jmp      .DONE
+
      .ODD_CLUSTER:
-     
+
           shr     dx, 0x0004                          ; take high twelve bits
-          
+
      .DONE:
-     
+
           mov     WORD [cluster], dx                  ; store new cluster
           cmp     dx, 0x0FF0                          ; test for end of file
           jb      LOAD_IMAGE
-          
+
      DONE:
-     
+
           mov     si, msgCRLF
           call    Print
-	  mov	  dl, [bootdevice]
           push    WORD 0x0050
           push    WORD 0x0000
           retf
-          
+
      FAILURE:
-     
+
           mov     si, msgFailure
           call    Print
           mov     ah, 0x00
@@ -306,13 +350,13 @@ main:
           int     0x19                                ; warm boot computer
 
 
-     bootdevice  db 0
      datasector  dw 0x0000
      cluster     dw 0x0000
      ImageName   db "KRNLDR  SYS"
+     msgLoading  db 0x0D, 0x0A, "Loading Boot Image ", 0x00
      msgCRLF     db 0x0D, 0x0A, 0x00
      msgProgress db ".", 0x00
      msgFailure  db 0x0D, 0x0A, "MISSING OR CURRUPT KRNLDR. Press Any Key to Reboot", 0x0D, 0x0A, 0x00
-     
+
           TIMES 510-($-$$) DB 0
           DW 0xAA55

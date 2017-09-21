@@ -7,7 +7,7 @@
 
 #include "DebugDisplay.h"
 
-int main(struct multiboot *mboot_ptr){
+int main(){
 
 	int i=0x12;
 

@@ -20,16 +20,16 @@ bits	16
 
 ;*******************************************
 ; LoadRoot ()
-;	- Load Root Directory Table to 0x7e00
+; 	Loads the root directory at 0x2E00
+;   Size of root directory = bpbRootEntries: 	DW 224 x 32 = 7168
 ;*******************************************
 
 LoadRoot:
 
 	pusha							; store registers
 	push	es
-
      ; compute size of root directory and store in "cx"
-     
+
 	xor     cx, cx						; clear registers
  	xor     dx, dx
 	mov     ax, 32					; 32 byte directory entry
@@ -38,15 +38,15 @@ LoadRoot:
 	xchg    ax, cx						; move into AX
 
      ; compute location of root directory and store in "ax"
-     
+
 	mov     al, BYTE [bpbNumberOfFATs]			; number of FATs
 	mul     WORD [bpbSectorsPerFAT]				; sectors used by FATs
 	add     ax, WORD [bpbReservedSectors]
 	mov     WORD [datasector], ax				; base of root directory
 	add     WORD [datasector], cx
 
-     ; read root directory into 0x7e00
- 
+     ; read root directory into 0x2E00
+
  	push	word ROOT_SEG
 	pop		es
 	mov     bx, 0								; copy root dir
@@ -57,7 +57,7 @@ LoadRoot:
 
 ;*******************************************
 ; LoadFAT ()
-;	- Loads FAT table to 0x7c00
+;	- Loads FAT table to 0x2c00
 ;
 ;	Parm/ ES:DI => Root Directory Table
 ;*******************************************
@@ -68,7 +68,7 @@ LoadFAT:
 	push	es
 
      ; compute size of FAT and store in "cx"
-     
+
 	xor     ax, ax
 	mov     al, BYTE [bpbNumberOfFATs]			; number of FATs
 	mul     WORD [bpbSectorsPerFAT]				; sectors used by FATs
@@ -87,13 +87,15 @@ LoadFAT:
 	pop		es
 	popa							; restore registers and return
 	ret
-	
+
 ;*******************************************
 ; FindFile ()
 ;	- Search for filename in root table
 ;
 ; parm/ DS:SI => File name
-; ret/ AX => File index number in directory table. -1 if error
+; ret/ AX => File index number in directory table. -1 if error (This is incorrect)
+; ret AX = -1 if not found
+; ret ES:DI points to the entry found
 ;*******************************************
 
 FindFile:
@@ -239,8 +241,3 @@ LoadFile:
 	ret
 
 %endif		;__FAT12_INC_67343546FDCC56AAB872_INCLUDED__
-
-
-
-
-

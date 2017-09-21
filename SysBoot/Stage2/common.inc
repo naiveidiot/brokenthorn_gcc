@@ -3,6 +3,7 @@
 %define _COMMON_INC_INCLUDED
 
 ; where the kernel is to be loaded to in protected mode
+; at 1 M
 %define IMAGE_PMODE_BASE 0x100000
 
 
@@ -11,7 +12,7 @@
 %define IMAGE_RMODE_BASE 0x3000
 
 ; kernel name
-ImageName     db "KRNL32  ELF"
+ImageName     db "KRNL32  EXE"
 
 ImageSize     db 0
 

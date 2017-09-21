@@ -1,4 +1,9 @@
 .DS_Store
+*.bin
 *.o
 *.img
+*.SYS
+*.EXE
+*.ELF
+*.log
 .git

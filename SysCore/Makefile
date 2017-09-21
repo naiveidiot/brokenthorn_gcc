@@ -1,5 +1,5 @@
 ARCH=ARCH_X86
-KERNEL=KRNL32.ELF
+KERNEL=KRNL32.EXE
 INCDIR= -I ./Include -I ./Kernel
 
 include ./Kernel/config.make

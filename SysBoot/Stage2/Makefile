@@ -1,0 +1,1 @@
+OBJS:= $(OBJS) Stage2/KRNLDR.SYS
