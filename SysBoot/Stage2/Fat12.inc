@@ -35,7 +35,7 @@ LoadRoot:
 
   ; compute size of root directory and store in "CX"
   xor    cx, cx
-   xor   dx, dx
+  xor    dx, dx
   mov    ax, 32                        ; 32 byte directory entry
   mul    WORD [bpbRootEntries]          ; total size of directory
   div    WORD [bpbBytesPerSector]      ; sectors used by directory
@@ -148,13 +148,14 @@ FindFile:
 ;   IN  : DS:SI points to the file name
 ;   EBX:BP points to the starting address of the buffer
 ;   OUT  : AX => -1 on error, 0 on success
+;          ECX = total number of sectors read, i.e size of the file
 ;   NOTE:
 ;*******************************************************************************
 
+  xor    ecx, ecx
+  push   ecx
 
 LoadFile:
-  push   ecx
-  xor    ecx, ecx
 
   .FIND_FILE:
   push   bx            ; BX=>BP points to buffer to write to; store it for later
@@ -169,12 +170,14 @@ LoadFile:
   ret
 
   .LOAD_IMAGE_PRE:
+  ;------
   ;sub    edi, ROOT_OFFSET
   ;sub    eax, ROOT_OFFSET
 
-  push  word ROOT_SEG
-  pop    es
+  ;push  word ROOT_SEG
+  ;pop    es
   ;mov    dx, WORD [es:di + 0x001A]  ; DI is the offset to file entry from the start of the root entry
+  ;------
   mov    dx, WORD [di + 0x001A]  ; DI is the offset to file entry from the start of the root entry
   mov    WORD [cluster], dx        ; file's first cluster
   ; BX:BP is the input param pointing to the buffer
@@ -185,6 +188,9 @@ LoadFile:
   push   bx              ; loadFAT use ES and BX, so save then for later use
   push   es
   call  LoadFAT         ; load FATs to starting 0x2C00
+
+  ;
+
 
   .LOAD_IMAGE:
   ; load the cluster
@@ -198,7 +204,7 @@ LoadFile:
   mov    cl, BYTE [bpbSectorsPerCluster]
 
   call   ReadSectors
-
+  ; inc number of sectors read and save on the stack
   pop    ecx
   inc    ecx
   push   ecx
@@ -231,12 +237,12 @@ LoadFile:
   .DONE:
   mov    WORD [cluster], dx
   cmp    dx, 0x0ff0                         ; test for end of file marker
-  jb    .LOAD_IMAGE
+  jb     .LOAD_IMAGE
 
   .SUCCESS:
   pop    es
   pop    bx
-  pop    ecx
+  pop    ecx                                ; ECX = total numbers of sectors read
   xor    ax, ax
   ret
 
