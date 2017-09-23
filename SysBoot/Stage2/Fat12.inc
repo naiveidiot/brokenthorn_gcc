@@ -96,7 +96,7 @@ LoadFAT:
 ;   PRE :
 ;   POST:
 ;   IN  : DS:SI => File name
-;   OUT  : ES:DI points to the entry found. AX = -1 if not found,
+;   OUT : ES:DI points to the entry found. AX = -1 if not found,
 ;   NOTE:
 ;*******************************************************************************
 
@@ -152,52 +152,40 @@ FindFile:
 ;   NOTE:
 ;*******************************************************************************
 
+LoadFile:
+  ; place  to store the total number of sectors loaded
   xor    ecx, ecx
   push   ecx
-
-LoadFile:
-
   .FIND_FILE:
-  push   bx            ; BX=>BP points to buffer to write to; store it for later
-  push   bp
-  call   FindFile      ; parm/ DS:SI => File name ; ret AX = -1 if not found ; ret ES:DI points to the entry found
+  mov    es, bx
+  mov    bx, bp
+  push   es
+  push   bx
+  call   FindFile      ; DS:SI => File name ; ret AX = -1 if not found ; ret ES:DI points to the entry found
   cmp    ax, -1
   jne    .LOAD_IMAGE_PRE
   pop    bp
   pop    bx
-  pop    ecx
+  pop    ecx           ; ECX = 0, no sectors is read
   mov    ax, -1
   ret
 
   .LOAD_IMAGE_PRE:
-  ;------
-  ;sub    edi, ROOT_OFFSET
-  ;sub    eax, ROOT_OFFSET
 
-  ;push  word ROOT_SEG
-  ;pop    es
-  ;mov    dx, WORD [es:di + 0x001A]  ; DI is the offset to file entry from the start of the root entry
-  ;------
-  mov    dx, WORD [di + 0x001A]  ; DI is the offset to file entry from the start of the root entry
+  mov    dx, WORD [di + 0x001A]    ; DI is the offset to file entry from the start of the root entry
   mov    WORD [cluster], dx        ; file's first cluster
-  ; BX:BP is the input param pointing to the buffer
-  ; BX, BP values are on the stack as we have pushed them after .FIND_FILE
-  pop    bx                        ; copy BP's value to BX
+  pop    bx
   pop    es                        ; copy BX'x value to ES
-  ; now ES:BX = BX:BP, the buffer
-  push   bx              ; loadFAT use ES and BX, so save then for later use
-  push   es
-  call  LoadFAT         ; load FATs to starting 0x2C00
-
-  ;
-
+  push   es              ; loadFAT use ES and BX, so save then for later use
+  push   bx
+  call   LoadFAT         ; load FATs to starting 0x2C00
 
   .LOAD_IMAGE:
   ; load the cluster
   mov    ax, WORD [cluster]                 ; cluster to read
   ; get back ES:BX, the image buffer's address
-  pop    es
   pop    bx
+  pop    es
 
   call   ClusterLBA
   xor    cx, cx
@@ -209,8 +197,8 @@ LoadFile:
   inc    ecx
   push   ecx
 
-  push   bx
   push   es
+  push   bx
 
   mov    ax, FAT_SEG
   mov    es, ax
@@ -228,7 +216,7 @@ LoadFile:
   jnz    .ODD_CLUSTER
 
   .EVEN_CLUSTER:
-  and    dx, 0000_1111_1111_1111b              ; take low 12 bits
+  and    dx, 0000_1111_1111_1111b           ; take low 12 bits
   jmp    .DONE
 
   .ODD_CLUSTER:
@@ -240,8 +228,8 @@ LoadFile:
   jb     .LOAD_IMAGE
 
   .SUCCESS:
-  pop    es
   pop    bx
+  pop    es
   pop    ecx                                ; ECX = total numbers of sectors read
   xor    ax, ax
   ret
