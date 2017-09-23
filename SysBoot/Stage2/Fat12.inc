@@ -18,14 +18,14 @@ bits  16
 %define ROOT_SEG 0x2e0
 
 ;*******************************************************************************
-;   LoadRoot
-;   ========
-;   Loads the root directory at 0x2E00
-;   PRE :
-;   POST: The root directory table is loaded at 0x2E00
-;   IN  :
-;   OUT  :
-;   NOTE: Size of root directory = 224(bpbRootEntries) x 32 = 7168 bytes. The table takes 0x2E00 to 0x4A00
+; LoadRoot
+; ========
+; DESC: Loads the root directory at 0x2E00
+; PRE :
+; POST: The root directory table is loaded at 0x2E00
+; IN  :
+; OUT :
+; NOTE: Size of root directory = 224(bpbRootEntries) x 32 = 7168 bytes. The table takes 0x2E00 to 0x4A00
 ;*******************************************************************************
 
 LoadRoot:
@@ -59,14 +59,14 @@ LoadRoot:
   ret
 
 ;*******************************************************************************
-;   LoadFAT
-;   =======
-;   DESC: Load FATs to 0x2C00
-;   PRE :
-;   POST:
-;   IN  : ES:BX points to the beginning of the buffer address
-;   OUT  :
-;   NOTE:
+; LoadFAT
+; =======
+; DESC: Load FATs to 0x2C00
+; PRE :
+; POST:
+; IN  : ES:BX points to the beginning of the buffer address
+; OUT :
+; NOTE:
 ;*******************************************************************************
 
 LoadFAT:
@@ -78,7 +78,7 @@ LoadFAT:
   mov    al, BYTE [bpbNumberOfFATs]
   mul    WORD [bpbSectorsPerFAT]
   mov    cx, ax                          ; number of sectors used by FATs
-  mov    ax, WORD [bpbReservedSectors]    ; first sector of FAT
+  mov    ax, WORD [bpbReservedSectors]   ; first sector of FAT
 
   ; load FATs into memory starting at 0x2C00
   push   word FAT_SEG
@@ -90,14 +90,14 @@ LoadFAT:
   ret
 
 ;*******************************************************************************
-;   FindFile
-;   ========
-;   DESC: Search for filename in root table
-;   PRE :
-;   POST:
-;   IN  : DS:SI => File name
-;   OUT : ES:DI points to the entry found. AX = -1 if not found,
-;   NOTE:
+; FindFile
+; ========
+; DESC: Search for filename in root table
+; PRE :
+; POST:
+; IN  : DS:SI => File name
+; OUT : ES:DI points to the entry found. AX = -1 if not found,
+; NOTE:
 ;*******************************************************************************
 
 
@@ -140,20 +140,18 @@ FindFile:
   ret
 
 ;*******************************************************************************
-;   LoadFile
-;   ========
-;   DESC: Load the file into memory
-;   PRE :
-;   POST: The file is loaded in the buffer.
-;   IN  : DS:SI points to the file name
-;   EBX:BP points to the starting address of the buffer
-;   OUT  : AX => -1 on error, 0 on success
-;          ECX = total number of sectors read, i.e size of the file
-;   NOTE:
+; LoadFile
+; ========
+; DESC: Load the file into memory
+; PRE :
+; POST: The file is loaded in the buffer.
+; IN  : DS:SI points to the file name, EBX:BP points to the starting address of the buffer
+; OUT : AX = -1 on error, 0 on success, ECX = total number of sectors read, i.e size of the file, BX = the address of the last byte of the file.
+; NOTE:
 ;*******************************************************************************
 
 LoadFile:
-  ; place  to store the total number of sectors loaded
+  ; ECX stores the total number of sectors loaded
   xor    ecx, ecx
   push   ecx
   .FIND_FILE:
@@ -172,18 +170,14 @@ LoadFile:
 
   .LOAD_IMAGE_PRE:
 
-  mov    dx, WORD [di + 0x001A]    ; DI is the offset to file entry from the start of the root entry
+  mov    dx, WORD [di + 0x001A]    ; DI is the offset to file entry from the start of the root entry, bytes 26th-27th is the first cluster of the file
   mov    WORD [cluster], dx        ; file's first cluster
-  pop    bx
-  pop    es                        ; copy BX'x value to ES
-  push   es              ; loadFAT use ES and BX, so save then for later use
-  push   bx
   call   LoadFAT         ; load FATs to starting 0x2C00
 
   .LOAD_IMAGE:
   ; load the cluster
   mov    ax, WORD [cluster]                 ; cluster to read
-  ; get back ES:BX, the image buffer's address
+  ; restore ES:BX, the image buffer's address
   pop    bx
   pop    es
 
